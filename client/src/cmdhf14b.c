@@ -1249,10 +1249,45 @@ static int write_sr_block(uint8_t blockno, uint8_t datalen, uint8_t *data) {
     free(packet);
 
     if (wait_14b_response(true, NULL, NULL) == false) {
-        PrintAndLogEx(FAILED, "SRx write block ( " _RED_("failed") " )");
+        PrintAndLogEx(FAILED, "SRx write counter block ( " _RED_("failed") " )");
         return PM3_ESOFT;
     }
     return PM3_SUCCESS;
+}
+
+static int write_sr_ct(uint8_t blockno, uint8_t datalen, uint8_t *data, uint8_t *safety_value, uint8_t adjustment_us) {
+
+    PacketResponseNG resp;
+    uint8_t psize = sizeof(iso14b_st_write_counter_t);
+    iso14b_st_write_counter_t *packet = (iso14b_st_write_counter_t *)calloc(1, psize);
+    if (packet == NULL) {
+        PrintAndLogEx(FAILED, "failed to allocate memory");
+        return PM3_EMALLOC;
+    }
+
+    packet->blockno = blockno;
+    packet->adjustment_us = adjustment_us;
+
+    packet->data[0] = data[0];
+    packet->data[1] = data[1];
+    packet->data[2] = data[2];
+    packet->data[3] = data[3];
+
+    packet->safety_value[0] = safety_value[0];
+    packet->safety_value[1] = safety_value[1];
+    packet->safety_value[2] = safety_value[2];
+    packet->safety_value[3] = safety_value[3];
+
+    clearCommandBuffer();
+    SendCommandNG(CMD_HF_ST_WRITE_COUNTER, (uint8_t *)packet, psize);
+    free(packet);
+
+    // Wait 15 minutes
+    if (WaitForResponseTimeout(CMD_HF_ST_WRITE_COUNTER, &resp, 15*60*1000) == false) {
+        PrintAndLogEx(FAILED, "SRx write counter ( " _RED_("failed") " )");
+        return PM3_ESOFT;
+    }
+    return resp.status;
 }
 
 static bool HF14B_st_reader(bool verbose) {
@@ -1682,6 +1717,74 @@ static int CmdHF14BSriWrbl(const char *Cmd) {
     } else {
         PrintAndLogEx(INFO, "Verifying block ( " _RED_("failed") " )");
     }
+    return status;
+}
+
+// Write ST25TB counter block
+static int CmdHF14BSt25tbWrct(const char *Cmd) {
+    CLIParserContext *ctx;
+    CLIParserInit(&ctx, "hf 14b wrct",
+                  "Write data to a counter in a ST25TB tag\n",
+                  "hf 14b wrct -b 5 -d 11223344 --sv 01000000\n"
+                 );
+
+    void *argtable[] = {
+        arg_param_begin,
+        arg_int0("b", "block",  "<dec>", "block number"),
+        arg_str1("d", "data",  "<hex>", "4 hex bytes"),
+        arg_str1(NULL, "sv", "<hex>", "safety value to prevent the counter from dropping below this value"),
+        arg_int0(NULL, "at", "<dec>", "adjustment time in us"),
+        arg_param_end
+    };
+    CLIExecWithReturn(ctx, Cmd, argtable, false);
+    int blockno = arg_get_int_def(ctx, 1, -1);
+    int dlen = 0;
+    uint8_t safety_value[4] = {0, 0, 0, 0};
+    uint8_t data[4] = {0, 0, 0, 0};
+    int res = CLIParamHexToBuf(arg_get_str(ctx, 2), data, sizeof(data), &dlen);
+    if (res) {
+        CLIParserFree(ctx);
+        return PM3_EINVARG;
+    }
+
+    if (dlen != sizeof(data)) {
+        PrintAndLogEx(FAILED, "data must be 4 hex bytes,  got %d", dlen);
+        return PM3_EINVARG;
+    }
+
+    res = CLIParamHexToBuf(arg_get_str(ctx, 3), safety_value, sizeof(safety_value), &dlen);
+    if (res) {
+        CLIParserFree(ctx);
+        return PM3_EINVARG;
+    }
+
+    uint8_t adjustment_us = arg_get_int_def(ctx, 4, 25);
+
+    CLIParserFree(ctx);
+
+    if (dlen != sizeof(safety_value)) {
+        PrintAndLogEx(FAILED, "safety value must be 4 hex bytes,  got %d", dlen);
+        return PM3_EINVARG;
+    }
+
+    if (blockno != 5 && blockno != 6) {
+        PrintAndLogEx(FAILED, "wring block number must be 5 or 6, got " _RED_("%u"), blockno);
+        return PM3_EINVARG;
+    }
+
+    PrintAndLogEx(SUCCESS, _YELLOW_("%s") " Write block %02X - " _YELLOW_("%s"),
+        "SRI512",
+        blockno,
+        sprint_hex(data, sizeof(data))
+    );
+
+    int status = write_sr_ct(blockno, ST25TB_SR_BLOCK_SIZE, data, safety_value, adjustment_us);
+    if (status != PM3_SUCCESS) {
+        PrintAndLogEx(INFO, "SRx write block ( " _RED_("failed") " )");
+        return status;
+    }
+    PrintAndLogEx(SUCCESS, "SRx write block ( " _GREEN_("ok") " )");
+
     return status;
 }
 
@@ -2893,6 +2996,7 @@ static command_t CommandTable[] = {
     {"sim",       CmdHF14BSim,         IfPm3Iso14443b,  "Fake ISO ISO-14443-B tag"},
     {"sniff",     CmdHF14BSniff,       IfPm3Iso14443b,  "Eavesdrop ISO-14443-B"},
     {"wrbl",      CmdHF14BSriWrbl,     IfPm3Iso14443b,  "Write data to a SRI512/SRIX4 tag"},
+    {"wrct",      CmdHF14BSt25tbWrct,  IfPm3Iso14443b,  "Write data to a counter in a ST25TB tag"},
     {"view",      CmdHF14BView,        AlwaysAvailable, "Display content from tag dump file"},
     {"valid",     CmdSRIX4kValid,      AlwaysAvailable, "SRIX4 checksum test"},
     {"---------", CmdHelp,             AlwaysAvailable, "------------------ " _CYAN_("Calypso / Mobib") " ------------------"},

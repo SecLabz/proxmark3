@@ -102,7 +102,7 @@ int tearoff_hook(void) {
         SpinDelayUsPrecision(g_tearoff_delay_us);
         FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
         g_tearoff_enabled = false;
-        Dbprintf(_YELLOW_("Tear-off triggered!"));
+        // Dbprintf(_YELLOW_("Tear-off triggered!"));
         return PM3_ETEAROFF;
     } else {
         return PM3_SUCCESS;     // SUCCESS = the hook didn't do anything
@@ -1515,6 +1515,11 @@ static void PacketReceived(PacketCommandNG *packet) {
             } PACKED;
             struct p *payload = (struct p *) packet->data.asBytes;
             read_14b_st_block(payload->blockno);
+            break;
+        }
+        case CMD_HF_ST_WRITE_COUNTER: {
+            iso14b_st_write_counter_t *payload = (iso14b_st_write_counter_t *)packet->data.asBytes;
+            write_14b_st_counter(payload);
             break;
         }
         case CMD_HF_ISO14443B_SNIFF: {

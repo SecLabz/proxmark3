@@ -59,6 +59,13 @@ typedef enum ISO14B_TYPE {
 } iso14b_type_t;
 
 typedef struct {
+    uint8_t blockno;
+    uint8_t data[4];
+    uint8_t adjustment_us;
+    uint8_t safety_value[4];
+} PACKED iso14b_st_write_counter_t;
+
+typedef struct {
     uint16_t flags;      // the ISO14B_COMMAND enum
     uint32_t timeout;
     uint16_t rawlen;

@@ -45,6 +45,7 @@ int iso14443b_select_card(iso14b_card_select_t *card);
 
 void SimulateIso14443bTag(const uint8_t *pupi);
 void read_14b_st_block(uint8_t blocknr);
+void write_14b_st_counter(iso14b_st_write_counter_t *p);
 void SniffIso14443b(void);
 void SendRawCommand14443B(iso14b_raw_cmd_t *p);
 
